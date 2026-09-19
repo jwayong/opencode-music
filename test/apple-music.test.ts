@@ -9,7 +9,9 @@ import { join } from "node:path"
 process.env.HOME = mkdtempSync(join(tmpdir(), "apple-music-test-"))
 const STATE_FILE = join(process.env.HOME, ".config", "opencode", ".apple-music.json")
 
-const Plugin = (await import("../apple-music.ts")).default
+const musicModule = await import("../apple-music.ts")
+const Plugin = musicModule.default
+const PLAYLIST: string = musicModule.PLAYLIST
 
 type Hooks = Awaited<ReturnType<typeof Plugin>>
 type EventInput = Parameters<NonNullable<Hooks["event"]>>[0]
@@ -207,8 +209,8 @@ test("regression: seed command quotes the playlist name (AppleScript needs a str
   await send("session.status", { status: { type: "busy" } })
   const seed = shell.calls.find((c) => c.includes("play playlist"))
   assert.ok(seed, "a play-playlist seed command should be emitted")
-  assert.match(seed!, /play playlist "Armin van Buuren Essentials"/, "playlist name must be double-quoted")
-  assert.ok(!/play playlist Armin/.test(seed!), "must not emit an unquoted identifier (causes -2740)")
+  assert.ok(seed!.includes(`play playlist "${PLAYLIST}"`), "playlist name must be double-quoted")
+  assert.ok(!seed!.includes(`play playlist ${PLAYLIST}`), "must not emit an unquoted identifier (causes -2740)")
 })
 
 test("regression: a burst of resume events after a prompt yields a single play", async () => {

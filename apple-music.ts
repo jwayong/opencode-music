@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { tool, type Plugin } from "@opencode-ai/plugin"
 
-const PLAYLIST = "Armin van Buuren Essentials"
+export const PLAYLIST = "Trance Coding"
 
 // Fade duration (ms) and volume step (0-100). Base volume is always the user's current
 // Apple Music `sound volume`, read at fade start and restored after fade-out.

@@ -80,12 +80,12 @@ All settings are constants at the top of `apple-music.ts`. Edit them, reinstall
 (`npm run install-plugin`), and restart opencode.
 
 ```ts
-const PLAYLIST = "Armin van Buuren Essentials" // exact Apple Music playlist name to play
+const PLAYLIST = "Trance Coding" // exact Apple Music playlist name to play
 ```
 
 | Constant | Default | Description |
 | --- | --- | --- |
-| `PLAYLIST` | `"Armin van Buuren Essentials"` | Exact Apple Music playlist name to play. |
+| `PLAYLIST` | `"Trance Coding"` | Exact Apple Music playlist name to play. |
 | `FADE_MS` | `1500` | Fade duration in ms (env `APPLE_MUSIC_FADE_MS`). |
 | `STEP` | `10` | Volume step per tick, 0–100 (env `APPLE_MUSIC_FADE_STEP`). |
 
@@ -212,7 +212,7 @@ Planned work — no timelines promised (see the [experimental notice](#opencode-
 osascript -e 'tell application "Music" to get player state'
 
 # start a playlist from the top
-osascript -e 'tell application "Music" to play playlist "Armin van Buuren Essentials"'
+osascript -e 'tell application "Music" to play playlist "Trance Coding"'
 
 # resume / pause
 osascript -e 'tell application "Music" to play'
