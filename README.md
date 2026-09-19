@@ -1,11 +1,11 @@
 # opencode-music
 
 An [opencode](https://opencode.ai) plugin that plays an **Apple Music** playlist while
-opencode is working ("thinking") and fades it out when it goes idle. Built for macOS.
+opencode is working ("thinking") and pauses it when it goes idle. Built for macOS.
 
 > ⚠️ **Experimental.** This project is early, best-effort software — expect rough edges,
 > breaking changes, and no stability guarantees. It drives AppleScript/`osascript` on your
-> machine and may misbehave (e.g. volume quirks). Use at your own risk; contributions and
+> machine and may misbehave (e.g. timing quirks). Use at your own risk; contributions and
 > bug reports welcome.
 >
 > More is coming: support for **other coding agents** beyond opencode — including
@@ -15,15 +15,17 @@ opencode is working ("thinking") and fades it out when it goes idle. Built for m
 ## What it does
 
 - When opencode starts a turn (`session.status` → `busy`), it starts or resumes the
-  configured Apple Music playlist, with a short **fade-in**.
+  configured Apple Music playlist.
 - When opencode finishes and goes idle (`session.status` → `idle` / `session.idle`),
-  it **fades out** playback and pauses, restoring your original volume.
-- When opencode **prompts you for input** (a permission request or a question), it fades
-  out too, and resumes once you answer — so music never plays over a prompt.
+  it **pauses** playback.
+- When opencode **prompts you for input** (a permission request or a question), it pauses
+  too, and resumes once you answer — so music never plays over a prompt.
 - **Resume, not restart:** the playlist is loaded once; later turns resume the paused
   track at its saved position instead of restarting from the top.
-- **Won't hijack your listening:** it only fades/pauses music that *it* started. If you
-  were already playing something when opencode began, it leaves it alone.
+- **Volume untouched:** the plugin only issues `play` / `pause` — it never changes your
+  Music volume, which stays exactly where you set it.
+- **Won't hijack your listening:** it only pauses music that *it* started. If you were
+  already playing something when opencode began, it leaves it alone.
 
 ## How it works
 
@@ -32,15 +34,15 @@ signals per session are:
 
 | Event | Meaning | Action |
 | --- | --- | --- |
-| `session.status` → `status.type === "busy"` | a turn started (working/thinking) | fade in / resume / seed playlist |
-| `session.status` → `status.type === "idle"` | the turn finished | fade out + pause |
-| `session.idle` | session idle (belt-and-suspenders) | fade out + pause |
-| `permission.asked` / `question.asked` | opencode is waiting on you | fade out + pause |
+| `session.status` → `status.type === "busy"` | a turn started (working/thinking) | resume / seed playlist |
+| `session.status` → `status.type === "idle"` | the turn finished | pause |
+| `session.idle` | session idle (belt-and-suspenders) | pause |
+| `permission.asked` / `question.asked` | opencode is waiting on you | pause |
 | `permission.replied` / `question.replied` / `question.rejected` | you answered / dismissed | resume (once no prompts remain) |
 
 Playback is driven through macOS **AppleScript** (`osascript`) via the Bun `$` shell the
-plugin receives. Apple Music has no native fade command, so a fade ramps the app's
-`sound volume` in an AppleScript `repeat`/`delay` loop, then restores the original value.
+plugin receives. It only sends simple `play` / `pause` commands — it never reads or writes
+your volume, so your Music setting is always respected.
 
 ## Files
 
@@ -76,18 +78,12 @@ All settings are constants at the top of `apple-music.ts`. Edit them, reinstall
 (`npm run install-plugin`), and restart opencode.
 
 ```ts
-const PLAYLIST = "Armin van Buuren Essentials"
-const FADE_MS = 500   // fade duration in ms (out on idle/prompt, in on resume)
-const STEP = 10       // volume step 0-100 -> ~5 steps over FADE_MS
-const FADE_IN = true  // also fade in when resuming
+const PLAYLIST = "Armin van Buuren Essentials" // exact Apple Music playlist name to play
 ```
 
 | Constant | Default | Description |
 | --- | --- | --- |
 | `PLAYLIST` | `"Armin van Buuren Essentials"` | Exact Apple Music playlist name to play. |
-| `FADE_MS` | `500` | Fade duration in ms (out on idle/prompt, in on resume). |
-| `STEP` | `10` | Volume step per tick (0–100); smaller = smoother, more AppleScript steps. |
-| `FADE_IN` | `true` | Also fade in when resuming. Set `false` to snap back to full volume. |
 
 ### Playlist
 
@@ -112,17 +108,6 @@ Examples:
 const PLAYLIST = "Office DJ"            // calm focus playlist
 const PLAYLIST = "Taylor Swift Essentials"
 ```
-
-### Fade tuning
-
-| Goal | Settings |
-| --- | --- |
-| Snappy in/out (default) | `FADE_MS = 500`, `STEP = 10` |
-| Slow, smooth fade | `FADE_MS = 1500`, `STEP = 5` |
-| No fade at all | `FADE_MS = 0` or `STEP = 100` (single jump) |
-| Fade out only (no fade in) | `FADE_IN = false` |
-
-> Keep `FADE_MS ≤ ~1500`. Very long fades can overlap with a fast idle→busy transition.
 
 ### Scope: global vs per-project
 
@@ -160,14 +145,14 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
 
 ```
 /music on       # start playing on the next working turn
-/music off      # stop now (fade out) and skip future turns
+/music off      # pause now and skip future turns
 /music toggle   # flip the current state
 /music status   # report whether it is enabled
 ```
 
 - State persists in `~/.config/opencode/.apple-music.json`; if the file is missing the
   plugin defaults to **enabled**.
-- Turning it off fades out immediately if music was playing; turning it on takes effect on
+- Turning it off pauses immediately if music was playing; turning it on takes effect on
   the next turn.
 - You can also ask opencode directly, e.g. *"disable the background music"* — it calls the
   same tool.
@@ -176,8 +161,9 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
 
 - **Playlist name must match exactly.** List yours with:
   `osascript -e 'tell application "Music" to get name of every playlist'`
-- **Fade is global output volume**, not per-track; it's restored after each fade, so your
-  manual volume setting is preserved.
+- **No fades (by design):** playback is plain `play` / `pause`. Earlier versions ramped
+  `sound volume` for fade in/out, but that fought with the user's own volume setting and was
+  removed — your volume is never read or written.
 - **Resume caveat:** plain `play` resumes whatever track Music last had loaded. The first
   turn of a session always seeds the playlist, so this only matters if you manually clear
   the queue mid-session.
@@ -187,11 +173,9 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
   last open prompt is answered. If a permission is auto-approved by config, you may see a
   brief pause/resume flicker. The SDK's v1 event types are stale, so these strings are
   matched at runtime via a cast.
-- **Serialized fades:** all play/pause/volume operations run through a single mutex, so a
-  burst of events (e.g. `permission.replied` + `session.status busy`) can't fire overlapping
-  fades — which previously left the volume stuck near mute.
-- **Race condition:** an idle→busy within ~`FADE_MS` can land during a fade; keeping
-  `FADE_MS ≤ 500` makes this negligible.
+- **Serialized operations:** all `play` / `pause` calls run through a single mutex, so a
+  burst of events (e.g. `permission.replied` + `session.status busy`) can't double-fire and
+  cause a pause/play blip when a prompt is answered.
 - **Automation permission** is required the first time, or `osascript` calls fail silently
   (`.nothrow()` keeps opencode stable).
 
@@ -205,7 +189,7 @@ Planned work — no timelines promised (see the [experimental notice](#opencode-
   - **pi.dev**
 - Extract a shared core so the Apple Music controller is agent-agnostic and each agent is a
   thin adapter over its own events.
-- Configurable playlists/triggers per agent, and richer fade/volume options.
+- Configurable playlists and triggers per agent, plus playlist presets.
 
 ## Requirements
 

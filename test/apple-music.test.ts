@@ -83,7 +83,7 @@ test("busy seeds the playlist once and does not restart while playing", async ()
   assert.ok(!shell.calls.some((c) => c.includes("play playlist")), "should not re-seed while already playing")
 })
 
-test("idle fades out and pauses playback", async () => {
+test("idle pauses playback", async () => {
   const { shell, send } = await setup()
 
   await send("session.status", { status: { type: "busy" } })
@@ -153,7 +153,7 @@ test("disabled plugin does not start playback on busy", async () => {
   assert.ok(!shell.calls.some((c) => c.includes("play")), "disabled -> no playback")
 })
 
-test("turning off while playing fades out immediately", async () => {
+test("turning off while playing pauses immediately", async () => {
   const { shell, send, tool } = await setup()
 
   await send("session.status", { status: { type: "busy" } })
@@ -211,7 +211,7 @@ test("regression: seed command quotes the playlist name (AppleScript needs a str
   assert.ok(!/play playlist Armin/.test(seed!), "must not emit an unquoted identifier (causes -2740)")
 })
 
-test("regression: a burst of resume events after a prompt yields a single fade-in", async () => {
+test("regression: a burst of resume events after a prompt yields a single play", async () => {
   const { shell, send } = await setup()
 
   await send("session.status", { status: { type: "busy" } }) // seed -> playing
@@ -219,17 +219,33 @@ test("regression: a burst of resume events after a prompt yields a single fade-i
   assert.equal(shell.state(), "paused")
   shell.reset()
 
-  // Reply + work-resume events arrive together (the scenario that used to overlap fades).
+  // Reply + work-resume events arrive together (the scenario that used to double-fire).
   await Promise.all([
     send("permission.replied", { requestID: "p1" }),
     send("session.status", { status: { type: "busy" } }),
     send("session.status", { status: { type: "busy" } }),
   ])
 
-  const fadeIns = shell.calls.filter((c) => c.includes("set sound volume to 0")) // unique to fade-in
-  assert.equal(fadeIns.length, 1, `expected exactly one fade-in, got ${fadeIns.length}`)
+  const plays = shell.calls.filter((c) => c.includes("to play") && !c.includes("playlist")) // resume plays
+  assert.equal(plays.length, 1, `expected exactly one resume play, got ${plays.length}`)
   assert.equal(shell.state(), "playing")
 })
+
+test("never manipulates sound volume (respects the user's setting)", async () => {
+  const { shell, send } = await setup()
+
+  // Exercise every transition that previously touched volume.
+  await send("session.status", { status: { type: "busy" } }) // seed
+  await send("permission.asked", { id: "p1" }) // pause for prompt
+  await send("permission.replied", { requestID: "p1" }) // resume
+  await send("question.asked", { id: "q1" }) // pause
+  await send("question.rejected", { requestID: "q1" }) // resume
+  await send("session.status", { status: { type: "idle" } }) // pause (turn done)
+
+  const volumeOps = shell.calls.filter((c) => c.includes("sound volume"))
+  assert.equal(volumeOps.length, 0, `plugin must not set sound volume, got: ${JSON.stringify(volumeOps)}`)
+})
+
 
 test("regression: redundant resume triggers while already playing are no-ops", async () => {
   const { shell, send } = await setup()

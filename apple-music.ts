@@ -5,9 +5,6 @@ import { dirname, join } from "node:path"
 import { tool, type Plugin } from "@opencode-ai/plugin"
 
 const PLAYLIST = "Armin van Buuren Essentials"
-const FADE_MS = 500 // fade duration in ms (out on idle, in on resume)
-const STEP = 10 // volume step 0-100 -> ~5 steps over FADE_MS
-const FADE_IN = true // also fade in when resuming
 
 const DEBUG = !!process.env.APPLE_MUSIC_DEBUG // set APPLE_MUSIC_DEBUG=1 to trace
 const DEBUG_FILE = "/tmp/apple-music-debug.log"
@@ -45,10 +42,10 @@ export default (async ({ $ }) => {
   const pending = new Set<string>() // open permission/question request ids
   let pausedForPrompt = false // did a user prompt cause the current pause?
 
-  // Serialize every Music-control op. Concurrent events (e.g. permission.replied +
-  // session.status busy) otherwise interleave their fades, each reading `sound volume`
-  // while another is mid-ramp -> resume ends muted. Each queued fn re-checks state after
-  // acquiring the lock, so redundant resumes become no-ops.
+  // Serialize every Music-control op so concurrent events (e.g. permission.replied +
+  // session.status busy) can't double-fire. Each queued fn re-checks state after acquiring
+  // the lock, so redundant pauses/plays become no-ops. We never touch `sound volume` -> the
+  // user's own volume setting is always respected.
   let chain: Promise<void> = Promise.resolve()
   const enqueue = <T>(fn: () => Promise<T>): Promise<T> => {
     const result = chain.then(fn, fn)
@@ -71,19 +68,10 @@ export default (async ({ $ }) => {
   const playing = async () =>
     (await osa(`tell application "Music" to get player state`)).stdout.toString().trim() === "playing"
 
-  const fadeOutNow = async () => {
-    if (!weOwnMusic) return
+  const pauseNow = async () => {
+    if (!weOwnMusic) return // only pause what WE started
     weOwnMusic = false
-    const delay = ((FADE_MS / 1000) / Math.ceil(100 / STEP)).toFixed(3)
-    await osa(`tell application "Music"
-      set b to sound volume
-      repeat with v from b to 0 by -${STEP}
-        set sound volume to v
-        delay ${delay}
-      end repeat
-      pause
-      set sound volume to b
-    end tell`)
+    await osa(`tell application "Music" to pause`)
   }
 
   const resumeNow = async () => {
@@ -95,30 +83,17 @@ export default (async ({ $ }) => {
       else dbg(`seed failed rc=${(r as any).exitCode}; will retry next turn`)
       return
     }
-    if (FADE_IN) {
-      const delay = ((FADE_MS / 1000) / Math.ceil(100 / STEP)).toFixed(3)
-      await osa(`tell application "Music"
-        set b to sound volume
-        set sound volume to 0
-        play
-        repeat with v from 0 to b by ${STEP}
-          set sound volume to v
-          delay ${delay}
-        end repeat
-      end tell`)
-    } else {
-      await osa(`tell application "Music" to play`)
-    }
+    await osa(`tell application "Music" to play`)
   }
 
   // Locked entry points: all playback changes run one at a time (see enqueue).
-  const fadeOutPause = () => enqueue(fadeOutNow)
+  const pausePlayback = () => enqueue(pauseNow)
   const resumeOrStart = () => enqueue(resumeNow)
 
   const pauseForUser = async () => {
     if (!weOwnMusic) return // nothing we started is playing -> nothing to do
     pausedForPrompt = true
-    await fadeOutPause()
+    await pausePlayback()
   }
 
   const resumeFromPrompt = async () => {
@@ -142,7 +117,7 @@ export default (async ({ $ }) => {
             busy.delete(sessionID)
             pending.clear()
             pausedForPrompt = false
-            if (!busy.size) await fadeOutPause() // always clean up, even if disabled
+            if (!busy.size) await pausePlayback() // always clean up, even if disabled
           }
           break
         }
@@ -150,7 +125,7 @@ export default (async ({ $ }) => {
           busy.delete(ev.properties.sessionID)
           pending.clear()
           pausedForPrompt = false
-          if (!busy.size) await fadeOutPause()
+          if (!busy.size) await pausePlayback()
           break
         }
         // opencode is prompting the user (permission request / question): pause.
@@ -185,14 +160,14 @@ export default (async ({ $ }) => {
           }
           const next = action === "on" ? true : action === "off" ? false : !(await readEnabled())
           await writeEnabled(next)
-          if (!next) await fadeOutPause() // stop immediately if it was playing
+          if (!next) await pausePlayback() // stop immediately if it was playing
           return `Apple Music plugin ${next ? "enabled" : "disabled"}.`
         },
       }),
     },
 
     dispose: async () => {
-      await fadeOutPause()
+      await pausePlayback()
     },
   }
 }) satisfies Plugin
