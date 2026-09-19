@@ -3,6 +3,15 @@
 An [opencode](https://opencode.ai) plugin that plays an **Apple Music** playlist while
 opencode is working ("thinking") and fades it out when it goes idle. Built for macOS.
 
+> ⚠️ **Experimental.** This project is early, best-effort software — expect rough edges,
+> breaking changes, and no stability guarantees. It drives AppleScript/`osascript` on your
+> machine and may misbehave (e.g. volume quirks). Use at your own risk; contributions and
+> bug reports welcome.
+>
+> More is coming: support for **other coding agents** beyond opencode — including
+> [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and
+> [pi.dev](https://pi.dev) — is planned. See [Roadmap](#roadmap).
+
 ## What it does
 
 - When opencode starts a turn (`session.status` → `busy`), it starts or resumes the
@@ -185,6 +194,18 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
   `FADE_MS ≤ 500` makes this negligible.
 - **Automation permission** is required the first time, or `osascript` calls fail silently
   (`.nothrow()` keeps opencode stable).
+
+## Roadmap
+
+Planned work — no timelines promised (see the [experimental notice](#opencode-music)):
+
+- **More coding agents.** Currently opencode-only; plan to support other agents that emit
+  work/idle/prompt signals, including:
+  - **Claude Code** (Anthropic's CLI)
+  - **pi.dev**
+- Extract a shared core so the Apple Music controller is agent-agnostic and each agent is a
+  thin adapter over its own events.
+- Configurable playlists/triggers per agent, and richer fade/volume options.
 
 ## Requirements
 
