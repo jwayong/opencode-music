@@ -7,7 +7,8 @@ const PLAYLIST = "Armin van Buuren Essentials"
 
 // Fade duration (ms) and volume step (0-100). Base volume is always the user's current
 // Apple Music `sound volume`, read at fade start and restored after fade-out.
-const FADE_MS = Number(process.env.APPLE_MUSIC_FADE_MS ?? 500)
+// Override with env APPLE_MUSIC_FADE_MS / APPLE_MUSIC_FADE_STEP, or edit these defaults.
+const FADE_MS = Number(process.env.APPLE_MUSIC_FADE_MS ?? 1500)
 const STEP = Number(process.env.APPLE_MUSIC_FADE_STEP ?? 10)
 
 const DEBUG = !!process.env.APPLE_MUSIC_DEBUG // set APPLE_MUSIC_DEBUG=1 to trace

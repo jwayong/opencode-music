@@ -86,8 +86,10 @@ const PLAYLIST = "Armin van Buuren Essentials" // exact Apple Music playlist nam
 | Constant | Default | Description |
 | --- | --- | --- |
 | `PLAYLIST` | `"Armin van Buuren Essentials"` | Exact Apple Music playlist name to play. |
-| `FADE_MS` | `500` | Fade duration in ms (env `APPLE_MUSIC_FADE_MS`). |
+| `FADE_MS` | `1500` | Fade duration in ms (env `APPLE_MUSIC_FADE_MS`). |
 | `STEP` | `10` | Volume step per tick, 0–100 (env `APPLE_MUSIC_FADE_STEP`). |
+
+Tune fades without editing code via env vars, e.g. `APPLE_MUSIC_FADE_MS=2500 opencode`.
 
 ### Playlist
 
