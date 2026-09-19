@@ -210,3 +210,41 @@ test("regression: seed command quotes the playlist name (AppleScript needs a str
   assert.match(seed!, /play playlist "Armin van Buuren Essentials"/, "playlist name must be double-quoted")
   assert.ok(!/play playlist Armin/.test(seed!), "must not emit an unquoted identifier (causes -2740)")
 })
+
+test("regression: a burst of resume events after a prompt yields a single fade-in", async () => {
+  const { shell, send } = await setup()
+
+  await send("session.status", { status: { type: "busy" } }) // seed -> playing
+  await send("permission.asked", { id: "p1" }) // pause for prompt
+  assert.equal(shell.state(), "paused")
+  shell.reset()
+
+  // Reply + work-resume events arrive together (the scenario that used to overlap fades).
+  await Promise.all([
+    send("permission.replied", { requestID: "p1" }),
+    send("session.status", { status: { type: "busy" } }),
+    send("session.status", { status: { type: "busy" } }),
+  ])
+
+  const fadeIns = shell.calls.filter((c) => c.includes("set sound volume to 0")) // unique to fade-in
+  assert.equal(fadeIns.length, 1, `expected exactly one fade-in, got ${fadeIns.length}`)
+  assert.equal(shell.state(), "playing")
+})
+
+test("regression: redundant resume triggers while already playing are no-ops", async () => {
+  const { shell, send } = await setup()
+
+  await send("session.status", { status: { type: "busy" } }) // seed -> playing
+  shell.reset()
+
+  await Promise.all([
+    send("session.status", { status: { type: "busy" } }),
+    send("session.status", { status: { type: "busy" } }),
+    send("permission.replied", { requestID: "nope" }),
+  ])
+
+  // "get player state" contains the substring "play", so exclude it when checking for
+  // actual playback-changing commands (seed / bare play / fade-in).
+  const changes = shell.calls.filter((c) => c.includes("play") && !c.includes("player"))
+  assert.equal(changes.length, 0, `expected no playback commands while already playing, got: ${JSON.stringify(changes)}`)
+})

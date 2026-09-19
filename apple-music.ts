@@ -45,6 +45,20 @@ export default (async ({ $ }) => {
   const pending = new Set<string>() // open permission/question request ids
   let pausedForPrompt = false // did a user prompt cause the current pause?
 
+  // Serialize every Music-control op. Concurrent events (e.g. permission.replied +
+  // session.status busy) otherwise interleave their fades, each reading `sound volume`
+  // while another is mid-ramp -> resume ends muted. Each queued fn re-checks state after
+  // acquiring the lock, so redundant resumes become no-ops.
+  let chain: Promise<void> = Promise.resolve()
+  const enqueue = <T>(fn: () => Promise<T>): Promise<T> => {
+    const result = chain.then(fn, fn)
+    chain = result.then(
+      () => {},
+      () => {},
+    )
+    return result
+  }
+
   const osa = async (s: string) => {
     const r = await $`osascript -e ${s}`.quiet().nothrow()
     if (DEBUG) {
@@ -57,7 +71,7 @@ export default (async ({ $ }) => {
   const playing = async () =>
     (await osa(`tell application "Music" to get player state`)).stdout.toString().trim() === "playing"
 
-  const fadeOutPause = async () => {
+  const fadeOutNow = async () => {
     if (!weOwnMusic) return
     weOwnMusic = false
     const delay = ((FADE_MS / 1000) / Math.ceil(100 / STEP)).toFixed(3)
@@ -72,7 +86,7 @@ export default (async ({ $ }) => {
     end tell`)
   }
 
-  const resumeOrStart = async () => {
+  const resumeNow = async () => {
     if (await playing()) return
     weOwnMusic = true
     if (!seeded) {
@@ -96,6 +110,10 @@ export default (async ({ $ }) => {
       await osa(`tell application "Music" to play`)
     }
   }
+
+  // Locked entry points: all playback changes run one at a time (see enqueue).
+  const fadeOutPause = () => enqueue(fadeOutNow)
+  const resumeOrStart = () => enqueue(resumeNow)
 
   const pauseForUser = async () => {
     if (!weOwnMusic) return // nothing we started is playing -> nothing to do

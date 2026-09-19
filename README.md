@@ -178,6 +178,9 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
   last open prompt is answered. If a permission is auto-approved by config, you may see a
   brief pause/resume flicker. The SDK's v1 event types are stale, so these strings are
   matched at runtime via a cast.
+- **Serialized fades:** all play/pause/volume operations run through a single mutex, so a
+  burst of events (e.g. `permission.replied` + `session.status busy`) can't fire overlapping
+  fades — which previously left the volume stuck near mute.
 - **Race condition:** an idle→busy within ~`FADE_MS` can land during a fade; keeping
   `FADE_MS ≤ 500` makes this negligible.
 - **Automation permission** is required the first time, or `osascript` calls fail silently
