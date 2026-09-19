@@ -22,8 +22,9 @@ opencode is working ("thinking") and pauses it when it goes idle. Built for macO
   too, and resumes once you answer — so music never plays over a prompt.
 - **Resume, not restart:** the playlist is loaded once; later turns resume the paused
   track at its saved position instead of restarting from the top.
-- **Volume untouched:** the plugin only issues `play` / `pause` — it never changes your
-  Music volume, which stays exactly where you set it.
+- **Fade in / out at your volume:** starting playback fades the track in and pausing fades it
+  out. The base level is always your current Music volume — read at fade time and restored
+  after a fade-out, so you're never left muted or forced to a fixed level.
 - **Won't hijack your listening:** it only pauses music that *it* started. If you were
   already playing something when opencode began, it leaves it alone.
 
@@ -34,15 +35,16 @@ signals per session are:
 
 | Event | Meaning | Action |
 | --- | --- | --- |
-| `session.status` → `status.type === "busy"` | a turn started (working/thinking) | resume / seed playlist |
-| `session.status` → `status.type === "idle"` | the turn finished | pause |
-| `session.idle` | session idle (belt-and-suspenders) | pause |
-| `permission.asked` / `question.asked` | opencode is waiting on you | pause |
-| `permission.replied` / `question.replied` / `question.rejected` | you answered / dismissed | resume (once no prompts remain) |
+| `session.status` → `status.type === "busy"` | a turn started (working/thinking) | fade in / seed playlist |
+| `session.status` → `status.type === "idle"` | the turn finished | fade out & pause |
+| `session.idle` | session idle (belt-and-suspenders) | fade out & pause |
+| `permission.asked` / `question.asked` | opencode is waiting on you | fade out & pause |
+| `permission.replied` / `question.replied` / `question.rejected` | you answered / dismissed | fade in (once no prompts remain) |
 
 Playback is driven through macOS **AppleScript** (`osascript`) via the Bun `$` shell the
-plugin receives. It only sends simple `play` / `pause` commands — it never reads or writes
-your volume, so your Music setting is always respected.
+plugin receives. Fades ramp `sound volume` between silence and your current level: it reads
+your existing volume as the base, so it fades toward *your* setting and restores it after a
+fade-out rather than dictating a fixed level.
 
 ## Files
 
@@ -84,6 +86,8 @@ const PLAYLIST = "Armin van Buuren Essentials" // exact Apple Music playlist nam
 | Constant | Default | Description |
 | --- | --- | --- |
 | `PLAYLIST` | `"Armin van Buuren Essentials"` | Exact Apple Music playlist name to play. |
+| `FADE_MS` | `500` | Fade duration in ms (env `APPLE_MUSIC_FADE_MS`). |
+| `STEP` | `10` | Volume step per tick, 0–100 (env `APPLE_MUSIC_FADE_STEP`). |
 
 ### Playlist
 
@@ -161,9 +165,10 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
 
 - **Playlist name must match exactly.** List yours with:
   `osascript -e 'tell application "Music" to get name of every playlist'`
-- **No fades (by design):** playback is plain `play` / `pause`. Earlier versions ramped
-  `sound volume` for fade in/out, but that fought with the user's own volume setting and was
-  removed — your volume is never read or written.
+- **Fades use your volume as the base:** start fades in from silence and pause fades out, then
+  restores your original `sound volume` so you're never left muted. An earlier version ramped
+  volume unsafely (concurrent fades read a mid-ramp value and could mute you); that can't
+  happen now because every play/pause runs through one serialized worker.
 - **Resume caveat:** plain `play` resumes whatever track Music last had loaded. The first
   turn of a session always seeds the playlist, so this only matters if you manually clear
   the queue mid-session.

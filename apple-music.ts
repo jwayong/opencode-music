@@ -5,6 +5,11 @@ import { tool, type Plugin } from "@opencode-ai/plugin"
 
 const PLAYLIST = "Armin van Buuren Essentials"
 
+// Fade duration (ms) and volume step (0-100). Base volume is always the user's current
+// Apple Music `sound volume`, read at fade start and restored after fade-out.
+const FADE_MS = Number(process.env.APPLE_MUSIC_FADE_MS ?? 500)
+const STEP = Number(process.env.APPLE_MUSIC_FADE_STEP ?? 10)
+
 const DEBUG = !!process.env.APPLE_MUSIC_DEBUG // set APPLE_MUSIC_DEBUG=1 to trace
 const DEBUG_FILE = "/tmp/apple-music-debug.log"
 const dbg = (m: string) => {
@@ -69,23 +74,54 @@ export default (async ({ $ }) => {
   const playing = async () =>
     (await osa(`tell application "Music" to get player state`)).stdout.toString().trim() === "playing"
 
+  // Number of ramp steps and per-step delay, shared by both fades.
+  const FADE_STEPS = Math.max(1, Math.ceil(100 / STEP))
+  const FADE_DELAY = ((FADE_MS / 1000) / FADE_STEPS).toFixed(3)
+
+  // Fade in to the user's current volume, running `startScript` (a `play`/`play playlist`) at
+  // silence then ramping up. `sound volume` is read first so we fade toward whatever the user set.
+  const fadeIn = async (startScript: string) => {
+    return await osa(`tell application "Music"
+	set b to sound volume
+	set sound volume to 0
+	${startScript}
+	repeat with v from 0 to b by ${STEP}
+		set sound volume to v
+		delay ${FADE_DELAY}
+	end repeat
+end tell`)
+  }
+
+  // Fade out to silence, pause, then restore the user's original volume so playback isn't muted.
+  const fadeOut = async () => {
+    await osa(`tell application "Music"
+	set b to sound volume
+	repeat with v from b to 0 by -${STEP}
+		set sound volume to v
+		delay ${FADE_DELAY}
+	end repeat
+	pause
+	set sound volume to b
+end tell`)
+  }
+
   // Brings actual playback in line with the current `wantPlaying`. Reads the live flag, so a
-  // queued reconcile never plays over a newer pause. Never touches `sound volume`.
+  // queued reconcile never plays over a newer pause. Fades use the user's own volume as base.
   const reconcile = async () => {
     const isPlaying = await playing()
     if (wantPlaying) {
       if (!isPlaying) {
         weOwnMusic = true
         if (!seeded) {
-          const r = await osa(`tell application "Music" to play playlist ${asQuote(PLAYLIST)}`)
+          const r = await fadeIn(`play playlist ${asQuote(PLAYLIST)}`)
           if ((r as any).exitCode === 0) seeded = true
           else dbg(`seed failed rc=${(r as any).exitCode}; will retry next turn`)
           return
         }
-        await osa(`tell application "Music" to play`)
+        await fadeIn("play")
       }
     } else {
-      if (isPlaying && weOwnMusic) await osa(`tell application "Music" to pause`)
+      if (isPlaying && weOwnMusic) await fadeOut()
       weOwnMusic = false
     }
   }
@@ -161,7 +197,7 @@ export default (async ({ $ }) => {
     dispose: async () => {
       await enqueue(async () => {
         if (weOwnMusic) {
-          await osa(`tell application "Music" to pause`)
+          await fadeOut()
           weOwnMusic = false
         }
       })

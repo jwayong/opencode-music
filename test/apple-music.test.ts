@@ -226,24 +226,28 @@ test("regression: a burst of resume events after a prompt yields a single play",
     send("session.status", { status: { type: "busy" } }),
   ])
 
-  const plays = shell.calls.filter((c) => c.includes("to play") && !c.includes("playlist")) // resume plays
-  assert.equal(plays.length, 1, `expected exactly one resume play, got ${plays.length}`)
+  const plays = shell.calls.filter((c) => c.includes("set sound volume to 0")) // resume fade-ins
+  assert.equal(plays.length, 1, `expected exactly one resume fade-in, got ${plays.length}`)
   assert.equal(shell.state(), "playing")
 })
 
-test("never manipulates sound volume (respects the user's setting)", async () => {
+test("fades ramp from/to the user's current volume (never hardcodes a level)", async () => {
   const { shell, send } = await setup()
 
-  // Exercise every transition that previously touched volume.
-  await send("session.status", { status: { type: "busy" } }) // seed
-  await send("permission.asked", { id: "p1" }) // pause for prompt
-  await send("permission.replied", { requestID: "p1" }) // resume
-  await send("question.asked", { id: "q1" }) // pause
-  await send("question.rejected", { requestID: "q1" }) // resume
-  await send("session.status", { status: { type: "idle" } }) // pause (turn done)
+  await send("session.status", { status: { type: "busy" } }) // seed fade-in
+  const fadeInScript = shell.calls.find((c) => c.includes("play playlist"))!
+  assert.ok(fadeInScript, "expected a seeded fade-in")
+  assert.match(fadeInScript, /set b to sound volume/, "fade-in reads the user's volume as base")
+  assert.match(fadeInScript, /set sound volume to 0/, "fade-in starts from silence")
+  assert.match(fadeInScript, /repeat with v from 0 to b by \d+/, "fade-in ramps up to the base")
 
-  const volumeOps = shell.calls.filter((c) => c.includes("sound volume"))
-  assert.equal(volumeOps.length, 0, `plugin must not set sound volume, got: ${JSON.stringify(volumeOps)}`)
+  shell.reset()
+  await send("session.status", { status: { type: "idle" } }) // fade-out pause
+  const fadeOutScript = shell.calls.find((c) => c.includes("pause"))!
+  assert.ok(fadeOutScript, "expected a fade-out pause")
+  assert.match(fadeOutScript, /set b to sound volume/, "fade-out reads the user's volume as base")
+  assert.match(fadeOutScript, /repeat with v from b to 0 by -\d+/, "fade-out ramps down to silence")
+  assert.match(fadeOutScript, /set sound volume to b/, "fade-out restores the user's volume (no mute)")
 })
 
 
@@ -276,7 +280,7 @@ test("regression: a busy+idle burst never leaves music playing (no stale resume)
     send("session.idle"),
   ])
 
-  const plays = shell.calls.filter((c) => c.includes("to play") && !c.includes("playlist"))
+  const plays = shell.calls.filter((c) => c.includes("set sound volume to 0")) // fade-ins
   assert.notEqual(shell.state(), "playing", "must not be left playing after idle")
   assert.equal(plays.length, 0, `stale resume fired: ${JSON.stringify(plays)}`)
 })
