@@ -1,0 +1,12 @@
+{
+  "name": "opencode-music",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "opencode plugin that plays Apple Music while it works and pauses when idle or prompting the user.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/apple-music.test.ts",
+    "install-plugin": "mkdir -p \"$HOME/.config/opencode/plugin\" \"$HOME/.config/opencode/command\" && cp apple-music.ts \"$HOME/.config/opencode/plugin/apple-music.ts\" && cp command/music.md \"$HOME/.config/opencode/command/music.md\""
+  },
+  "license": "MIT"
+}

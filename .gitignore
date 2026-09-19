@@ -1,0 +1,10 @@
+# OS / editor cruft
+.DS_Store
+*.log
+
+# Dependencies: ignore node_modules EXCEPT the committed @opencode-ai/plugin
+# test stub (needed so `npm test` runs with zero network install).
+node_modules/*
+!node_modules/@opencode-ai/
+node_modules/@opencode-ai/*
+!node_modules/@opencode-ai/plugin/
