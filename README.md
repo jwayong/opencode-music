@@ -173,9 +173,10 @@ Toggle playback from inside opencode without editing config. The plugin exposes 
   last open prompt is answered. If a permission is auto-approved by config, you may see a
   brief pause/resume flicker. The SDK's v1 event types are stale, so these strings are
   matched at runtime via a cast.
-- **Serialized operations:** all `play` / `pause` calls run through a single mutex, so a
-  burst of events (e.g. `permission.replied` + `session.status busy`) can't double-fire and
-  cause a pause/play blip when a prompt is answered.
+- **Desired-state reconciliation:** playback is driven by a single computed flag — play only
+  when `enabled && working && !awaitingUser` — recomputed synchronously on every event and
+  applied through one serialized worker. This makes idle reliably pause (a queued resume can't
+  replay after the turn ends) and prevents double-fire blips around prompts.
 - **Automation permission** is required the first time, or `osascript` calls fail silently
   (`.nothrow()` keeps opencode stable).
 

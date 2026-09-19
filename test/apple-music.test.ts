@@ -264,3 +264,19 @@ test("regression: redundant resume triggers while already playing are no-ops", a
   const changes = shell.calls.filter((c) => c.includes("play") && !c.includes("player"))
   assert.equal(changes.length, 0, `expected no playback commands while already playing, got: ${JSON.stringify(changes)}`)
 })
+
+test("regression: a busy+idle burst never leaves music playing (no stale resume)", async () => {
+  const { shell, send } = await setup()
+
+  // A turn that starts and ends in the same tick. Previously the queued resume from `busy`
+  // could run after the idle pause and leave playback running.
+  await Promise.all([
+    send("session.status", { status: { type: "busy" } }),
+    send("session.status", { status: { type: "idle" } }),
+    send("session.idle"),
+  ])
+
+  const plays = shell.calls.filter((c) => c.includes("to play") && !c.includes("playlist"))
+  assert.notEqual(shell.state(), "playing", "must not be left playing after idle")
+  assert.equal(plays.length, 0, `stale resume fired: ${JSON.stringify(plays)}`)
+})
